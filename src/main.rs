@@ -5,6 +5,8 @@ use anyhow::{anyhow, Result};
 use candle_core::{DType, Device, Tensor, Var};
 use candle_nn::{VarBuilder, VarMap};
 use candle_transformers::models::clip::{ClipConfig, ClipModel};
+use candle_transformers::models::clip::text_model::{Activation, ClipTextConfig};
+use candle_transformers::models::clip::vision_model::ClipVisionConfig;
 use clap::{arg, Parser, Subcommand};
 use image::io::Reader as ImageReader;
 use serde::{Deserialize, Serialize};
@@ -89,7 +91,32 @@ fn main() -> Result<()> {
     let mut model_path = PathBuf::from(&args.model_path);
     model_path.push("model.safetensors");
 
-    let config = ClipConfig::vit_base_patch32();
+    let config = ClipConfig {
+        text_config: ClipTextConfig {
+            vocab_size: 49408,
+            embed_dim: 1024,
+            activation: Activation::QuickGelu,
+            intermediate_size: 4096,
+            max_position_embeddings: 77,
+            pad_with: None,
+            num_hidden_layers: 24,
+            num_attention_heads: 16,
+            projection_dim: 1024,
+        },
+        vision_config: ClipVisionConfig {
+            embed_dim: 1280,
+            activation: Activation::QuickGelu,
+            intermediate_size: 5120,
+            num_hidden_layers: 32,
+            num_attention_heads: 16,
+            projection_dim: 1024,
+            num_channels: 3,
+            image_size: 224,
+            patch_size: 14,
+        },
+        logit_scale_init_value: 2.6592,
+        image_size: 224,
+    };
 
     let safetensors = unsafe { candle_core::safetensors::MmapedSafetensors::new(model_path)? };
 
