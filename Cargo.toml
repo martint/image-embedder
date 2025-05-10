@@ -1,0 +1,16 @@
+[package]
+name = "image-embedder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokenizers = "0.15"
+candle-core = { git = "https://github.com/huggingface/candle", package = "candle-core" , features = ["metal"]}
+candle-nn = { git = "https://github.com/huggingface/candle", features = ["metal"] }
+candle-transformers = { git = "https://github.com/huggingface/candle" }
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+image = "0.24"
+walkdir = "2.4"
