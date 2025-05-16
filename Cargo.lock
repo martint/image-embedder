@@ -95,6 +95,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
+name = "bindgen_cuda"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f8489af5b7d17a81bffe37e0f4d6e1e4de87c87329d05447f22c35d95a1227d"
+dependencies = [
+ "glob",
+ "num_cpus",
+ "rayon",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,7 +182,9 @@ version = "0.9.1"
 source = "git+https://github.com/huggingface/candle#3d05f5cf3d8253e373a1c465953aeec1b702da8b"
 dependencies = [
  "byteorder",
+ "candle-kernels",
  "candle-metal-kernels",
+ "cudarc",
  "gemm 0.17.1",
  "half",
  "memmap2",
@@ -184,9 +197,18 @@ dependencies = [
  "safetensors",
  "thiserror",
  "ug",
+ "ug-cuda",
  "ug-metal",
  "yoke",
  "zip",
+]
+
+[[package]]
+name = "candle-kernels"
+version = "0.9.1"
+source = "git+https://github.com/huggingface/candle#3d05f5cf3d8253e373a1c465953aeec1b702da8b"
+dependencies = [
+ "bindgen_cuda",
 ]
 
 [[package]]
@@ -381,6 +403,16 @@ name = "crunchy"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
+
+[[package]]
+name = "cudarc"
+version = "0.16.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9574894139a982bf26fbb44473a9d416c015e779c51ef0fbc0789f1a1c17b25"
+dependencies = [
+ "half",
+ "libloading",
+]
 
 [[package]]
 name = "darling"
@@ -875,6 +907,12 @@ dependencies = [
  "color_quant",
  "weezl",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 
 [[package]]
 name = "half"
@@ -1916,6 +1954,19 @@ dependencies = [
  "thiserror",
  "tracing",
  "yoke",
+]
+
+[[package]]
+name = "ug-cuda"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14053653d0b7fa7b21015aa9a62edc8af2f60aa6f9c54e66386ecce55f22ed29"
+dependencies = [
+ "cudarc",
+ "half",
+ "serde",
+ "thiserror",
+ "ug",
 ]
 
 [[package]]

@@ -86,7 +86,25 @@ fn collect_images(dir: &Path) -> Vec<PathBuf> {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let device = &Device::new_metal(0)?;
+    let device = {
+        #[cfg(target_os = "macos")]
+        {
+            Device::new_metal(0).unwrap_or(Device::Cpu)
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Device::new_cuda(0).unwrap_or(Device::Cpu)
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            Device::Cpu
+        }
+    };
+    let device = &device;
+
+    eprintln!("Using device: {:?}", device.location());
 
     let mut model_path = PathBuf::from(&args.model_path);
     model_path.push("model.safetensors");
