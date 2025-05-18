@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
 
 use anyhow::{anyhow, Result};
 use candle_core::{DType, Device, Tensor, Var};
@@ -8,8 +9,10 @@ use candle_transformers::models::clip::{ClipConfig, ClipModel};
 use candle_transformers::models::clip::text_model::{Activation, ClipTextConfig};
 use candle_transformers::models::clip::vision_model::ClipVisionConfig;
 use clap::{arg, Parser, Subcommand};
+use crossbeam_channel::bounded;
 use image::io::Reader as ImageReader;
 use image::{ImageBuffer, Rgb};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tokenizers::Tokenizer;
 use walkdir::WalkDir;
@@ -59,7 +62,7 @@ fn load_image(path: &Path) -> Result<ImageBuffer<Rgb<u8>, Vec<u8>>> {
     Ok(resized)
 }
 
-fn compute_image_embedding(device: &&Device, model: &ClipModel, image: ImageBuffer<Rgb<u8>, Vec<u8>>) -> Result<Tensor> {
+fn compute_image_embedding(device: &Device, model: &ClipModel, image: ImageBuffer<Rgb<u8>, Vec<u8>>) -> Result<Tensor> {
     let data: Vec<f32> = image
         .pixels()
         .flat_map(|p| p.0.iter().map(|&c| c as f32 / 255.0))
@@ -165,15 +168,62 @@ fn main() -> Result<()> {
             output_json,
         } => {
             let image_paths = collect_images(&input_dir);
-            let mut results = Vec::new();
-            for path in image_paths {
-                let image = load_image(&path)?;
-                let embed = compute_image_embedding(&device, &model, image)?;
-                results.push(ImageEmbedding {
-                    path: path.display().to_string(),
-                    embedding: embed.squeeze(0)?.to_vec1()?,
-                });
-            }
+            eprintln!("Found {} images to process", image_paths.len());
+
+            // Create a bounded channel with appropriate buffer size
+            let buffer_size = 10; 
+            let (sender, receiver) = bounded::<(PathBuf, ImageBuffer<Rgb<u8>, Vec<u8>>)>(buffer_size);
+
+            // Create a device for the embedding thread
+            let thread_device = device.clone();
+            let thread_model = model.clone();
+
+            // Spawn a thread for computing embeddings (single-threaded)
+            let embedding_thread = thread::spawn(move || {
+                let mut results = Vec::new();
+                while let Ok((path, image)) = receiver.recv() {
+                    match compute_image_embedding(&thread_device, &thread_model, image) {
+                        Ok(embed) => {
+                            match embed.squeeze(0).and_then(|t| t.to_vec1()) {
+                                Ok(embedding) => {
+                                    results.push(ImageEmbedding {
+                                        path: path.display().to_string(),
+                                        embedding,
+                                    });
+                                    if results.len() % 10 == 0 {
+                                        eprintln!("Processed {} images", results.len());
+                                    }
+                                }
+                                Err(e) => eprintln!("Error processing embedding: {}", e),
+                            }
+                        }
+                        Err(e) => eprintln!("Error computing embedding for {}: {}", path.display(), e),
+                    }
+                }
+                results
+            });
+
+            let chunk_size = 50;
+            image_paths.par_chunks(chunk_size).for_each_with(sender.clone(), |s, chunk| {
+                for path in chunk {
+                    match load_image(path) {
+                        Ok(image) => {
+                            if s.send((path.clone(), image)).is_err() {
+                                eprintln!("Error sending image to embedding thread");
+                                break;
+                            }
+                        }
+                        Err(e) => eprintln!("Error loading image {}: {}", path.display(), e),
+                    }
+                }
+            });
+
+            // Close the sender to signal the embedding thread to finish
+            drop(sender);
+
+            let results = embedding_thread.join().map_err(|_| anyhow!("Embedding thread panicked"))?;
+
+            eprintln!("Writing {} embeddings to {}", results.len(), output_json.display());
             fs::write(output_json, serde_json::to_string_pretty(&results)?)?;
         }
         Command::Search {
