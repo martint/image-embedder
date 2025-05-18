@@ -9,6 +9,7 @@ use candle_transformers::models::clip::text_model::{Activation, ClipTextConfig};
 use candle_transformers::models::clip::vision_model::ClipVisionConfig;
 use clap::{arg, Parser, Subcommand};
 use image::io::Reader as ImageReader;
+use image::{ImageBuffer, Rgb};
 use serde::{Deserialize, Serialize};
 use tokenizers::Tokenizer;
 use walkdir::WalkDir;
@@ -52,16 +53,21 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot / (norm_a * norm_b + 1e-8)
 }
 
-fn load_image_tensor(path: &Path, device: &Device) -> Result<Tensor> {
-    let img = ImageReader::open(path)?.decode()?.to_rgb8();
-    let resized = image::imageops::resize(&img, 224, 224, image::imageops::FilterType::Triangle);
-    let data: Vec<f32> = resized
+fn load_image(path: &Path) -> Result<ImageBuffer<Rgb<u8>, Vec<u8>>> {
+    let image = ImageReader::open(path)?.decode()?.to_rgb8();
+    let resized = image::imageops::resize(&image, 224, 224, image::imageops::FilterType::Triangle);
+    Ok(resized)
+}
+
+fn compute_image_embedding(device: &&Device, model: &ClipModel, image: ImageBuffer<Rgb<u8>, Vec<u8>>) -> Result<Tensor> {
+    let data: Vec<f32> = image
         .pixels()
         .flat_map(|p| p.0.iter().map(|&c| c as f32 / 255.0))
         .collect();
 
-    let tensor = Tensor::from_vec(data, (1, 224, 224, 3), device)?.permute((0, 3, 1, 2))?;
-    Ok(tensor)
+    let tensor = Tensor::from_vec(data, (1, 224, 224, 3), &device)?.permute((0, 3, 1, 2))?;
+    let embed = model.get_image_features(&tensor)?;
+    Ok(embed)
 }
 
 fn collect_images(dir: &Path) -> Vec<PathBuf> {
@@ -161,8 +167,8 @@ fn main() -> Result<()> {
             let image_paths = collect_images(&input_dir);
             let mut results = Vec::new();
             for path in image_paths {
-                let image_tensor = load_image_tensor(&path, &device)?;
-                let embed = model.get_image_features(&image_tensor)?;
+                let image = load_image(&path)?;
+                let embed = compute_image_embedding(&device, &model, image)?;
                 results.push(ImageEmbedding {
                     path: path.display().to_string(),
                     embedding: embed.squeeze(0)?.to_vec1()?,
